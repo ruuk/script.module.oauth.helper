@@ -3,14 +3,19 @@ try:
 	from reqests2 import requests
 except:
 	import requests
+	
 import xbmc, xbmcgui
 import time
 
-URL = 'http://auth.2ndmind.com/cgi-bin/oauth.py'
+URL = 'https://auth-ruuk.rhcloud.com/auth/{0}'
 USER_URL = 'auth.2ndmind.com'
+REFERRER = 'https://auth-ruuk.rhcloud.com/'
 
 def getToken(source):
-	req = requests.post(URL,data={'request':'getlookup','source':source})
+	session = requests.Session()
+	session.headers.update({'referer': REFERRER})
+	req = session.post(URL.format('getlookup'),data={'source':source})
+	start = time.time()
 	data = req.json()
 	lookup = data['lookup']
 	lookup_disp = lookup[0:4] + '-' + lookup[-4:]
@@ -19,9 +24,8 @@ def getToken(source):
 	prog = xbmcgui.DialogProgress()
 	prog.create('Getting Token','Code: {0}'.format(lookup_disp),'','Waiting for response...')
 	try:
-		start = time.time()
 		while not prog.iscanceled() and not xbmc.abortRequested:
-			req = requests.post(URL,data={'request':'gettoken','lookup':lookup,'md5':md5})
+			req = session.post(URL.format('gettoken'),data={'lookup':lookup,'md5':md5})
 			data = req.json()
 			status = data.get('status') or 'error'
 			if status == 'error':
@@ -36,6 +40,12 @@ def getToken(source):
 			now = time.time()
 			interval = now - start
 			pct = int((interval/300.0)*100)
-			prog.update(pct,'Code: {0}'.format(lookup_disp),'','Waiting for response...')
+			left = 300 - interval
+			mins = int(left/60)
+			secs = int(left%60)
+			mins = mins and '{0}m '.format(mins) or ''
+			secs = secs and '{0}s'.format(secs) or ''
+			if mins or secs: left = mins + secs + ' left'
+			prog.update(pct,'Code: {0}'.format(lookup_disp),'','Waiting for response... ' + left)
 	finally:
 		prog.close()
