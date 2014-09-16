@@ -5,7 +5,7 @@ except:
 	import requests
 	
 import xbmc, xbmcgui, xbmcaddon
-import time
+import time, re
 
 ADDON_ID = 'script.module.oauth.helper'
 
@@ -16,14 +16,60 @@ REFERRER = 'https://auth-ruuk.rhcloud.com/'
 WAIT_SECONDS = 300
 POLL_INTERVAL_SECONDS = 5
 
-'''#TODO:
-	Handle timeout
-'''
-
 def LOG(msg):
 	xbmc.log('{0}: {1}'.format(ADDON_ID,msg))
 
-def getToken(source):
+class GetTokenFail:
+	def __init__(self,ftype,show_options=False):
+		self.failType = ftype
+		self.showOptions = show_options
+
+	def __nonzero__(self):
+		return False
+
+def getToken(source,from_file=False):
+	if from_file:
+		return loadTokenFromFile()
+		
+	token = True
+	while token:
+		if token == True: token = _getToken(source)
+		if token or token == None:
+			return token
+		if not token.showOptions:
+			return None
+		token = showFailOptions()
+
+def showFailOptions():
+	idx = xbmcgui.Dialog().select('Options',['Retry','Load Token From File','Cancel'])
+	if idx < 0 or idx == 2:
+		return None
+		
+	if idx == 1:
+		return loadTokenFromFile()
+	else:
+		return True
+
+def loadTokenFromFile():	
+	fpath = xbmcgui.Dialog().browseSingle(1,'Browse to file containing token','files')
+	if not fpath: return None
+	try:
+		import xbmcvfs
+		f = xbmcvfs.File(fpath)
+		token = f.read().strip()
+		if re.search('[\n\r\t]',token):
+			xbmcgui.Dialog().ok('ERROR','','Not a valid token file.')
+			return None
+	except:
+		import traceback
+		xbmc.log(traceback.format_exc())
+		return None
+	finally:
+		f.close()
+	xbmcgui.Dialog().ok('Done','','Token Loaded!')
+	return token
+
+def _getToken(source):
 	session = requests.Session()
 	session.headers.update({'referer': REFERRER})
 	req = session.post(URL.format('getlookup'),data={'source':source})
@@ -35,50 +81,69 @@ def getToken(source):
 	prog = xbmcgui.DialogProgress()
 	prog.create('Authorize','Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response...')
 	prog.update(0,'Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response... ')
+	secsLeft = 0
 	try:
 		while not prog.iscanceled() and not xbmc.abortRequested:
 			req = session.post(URL.format('gettoken'),data={'lookup':lookup,'md5':md5})
-			data = req.json()
-			status = data.get('status') or 'error'
+			try:
+				data = req.json()
+				status = data.get('status') or 'error'
+				xbmc.sleep(5000)
+			except:
+				if time.time() - start >= WAIT_SECONDS - 5:
+					status = 'timeout'
+				else:
+					status = 'error'
+				import traceback
+				xbmc.log(traceback.format_exc())
 			if status == 'error':
 				prog.close()
-				xbmcgui.Dialog().ok('ERROR','There was an error authorizing.','','Please try again.')
-				break
+				yesno = xbmcgui.Dialog().yesno('ERROR','There was an error authorizing.','','Please try again.','OK','Options')
+				return GetTokenFail('ERROR',yesno)
 			elif status == 'waiting':
-				secs_left = data.get('secs_left')
+				secsLeft = data.get('secsLeft')
+			elif status == 'timeout':
+				prog.close()
+				yesno = xbmcgui.Dialog().ok('Timeout','Authorization timed out.','','Please try again.','OK','Options')
+				return GetTokenFail('TIMEOUT',yesno)
 			elif status == 'ready':
 				prog.close()
 				xbmcgui.Dialog().ok('Done','','Authorization complete!')
 				return data.get('token')
-				
+
 			for x in range(0,POLL_INTERVAL_SECONDS): #Update display every second, but only poll every POLL_INTERVAL_SECONDS
 				if prog.iscanceled(): return
-				pct, left_disp, start = timeLeft(start,WAIT_SECONDS,secs_left=secs_left)
-				secs_left = None
-				prog.update(pct,'Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response... ' + left_disp)
+				pct, leftDisp, start = timeLeft(start,WAIT_SECONDS,secsLeft=secsLeft)
+				if pct == None: break
+				secsLeft = None
+				prog.update(pct,'Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response... ' + leftDisp)
 				xbmc.sleep(1000)
+			
 	finally:
 		prog.close()
 
-def timeLeft(start,total,secs_left=None):
-	left_disp = ''
+def timeLeft(start,total,secsLeft=None):
+	leftDisp = ''
 	
 	now = time.time()
-	if secs_left:
-		left = secs_left
+	if secsLeft:
+		left = secsLeft
 		sofar = total - left
 		start = now - sofar
 	else:
 		sofar = now - start
 		left = total - sofar
 		
+	if left < 0 :
+		return None, None, start
+		
 	pct = int((sofar/float(total))*100)
 	mins = int(left/60)
 	secs = int(left%60)
 	mins = mins and '{0}m '.format(mins) or ''
 	secs = secs and '{0}s'.format(secs) or ''
-	if mins or secs: left_disp = mins + secs + ' left'
-	return pct, left_disp, start
+	if mins or secs: leftDisp = mins + secs + ' left'
+	return pct, leftDisp, start
 
 class GoogleOAuthorizer(object):
 	auth1URL = 'https://accounts.google.com/o/oauth2/device/code'
