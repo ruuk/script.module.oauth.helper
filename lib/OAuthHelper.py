@@ -10,9 +10,9 @@ import time, re
 ADDON_ID = 'script.module.oauth.helper'
 
 
-URL = 'https://auth-ruuk.rhcloud.com/auth/{0}'
+URL = 'https://main-ruuk.rhcloud.com/auth/{0}'
 USER_URL = 'auth.2ndmind.com'
-REFERRER = 'https://auth-ruuk.rhcloud.com/'
+REFERRER = 'https://main-ruuk.rhcloud.com/'
 WAIT_SECONDS = 300
 POLL_INTERVAL_SECONDS = 5
 
