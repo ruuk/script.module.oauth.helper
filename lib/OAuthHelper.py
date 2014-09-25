@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 try:
-	from reqests2 import requests
-except:
+	import requests2 as requests
+except ImportError:
 	import requests
 	
 import xbmc, xbmcgui, xbmcaddon
