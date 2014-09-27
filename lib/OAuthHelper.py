@@ -5,10 +5,12 @@ except ImportError:
 	import requests
 	
 import xbmc, xbmcgui, xbmcaddon
-import time, re
+import time, re, os, json
 
 ADDON_ID = 'script.module.oauth.helper'
 
+TOKEN_PATH = os.path.join(xbmc.translatePath(xbmcaddon.Addon(ADDON_ID).getAddonInfo('profile')),'tokens')
+if not os.path.exists(TOKEN_PATH): os.makedirs(TOKEN_PATH)
 
 URL = 'https://main-ruuk.rhcloud.com/auth/{0}'
 USER_URL = 'auth.2ndmind.com'
@@ -145,6 +147,75 @@ def timeLeft(start,total,secsLeft=None):
 	if mins or secs: leftDisp = mins + secs + ' left'
 	return pct, leftDisp, start
 
+class AddonTokens(object):
+	def __init__(self,addon_id=None):
+		self.addonID = addon_id or xbmcaddon.Addon().getAddonInfo('id')
+		self.usersFile = os.path.join(TOKEN_PATH,self.addonID)
+		self.currentID = None
+		self.loadUsers()
+		
+	def loadUsers(self):
+		self.users = {}
+		if os.path.exists(self.usersFile):
+			try:
+				with open(self.usersFile,'r') as f:
+					self.users = json.load(f)
+					return
+			except ValueError:
+				pass
+
+	def saveUsers(self):
+		jsonString = json.dumps(self.users)
+		with open(self.usersFile,'w') as f:
+			f.write(jsonString)
+
+	def setUsers(self,users):
+		self.users = users
+		self.saveUsers()
+
+	def setUser(self,ID):
+		if self.currentID == ID: return
+		self.currentID = ID
+
+	def renameUser(self,ID,new):
+		if not ID in self.users: return
+		self.users[ID]['name'] = new
+		self.saveUsers()
+
+	def deleteUser(self,ID):
+		if not ID in self.users: return
+		del(self.users[ID])
+		self.saveUsers()
+
+	def setSetting(self,key,val):
+		if not self.currentID in self.users: self.users[self.currentID] = {}
+		self.users[self.currentID][key] = val
+		self.saveUsers()
+
+	def getSetting(self,key,default=None):
+		if not self.currentID in self.users: return default
+		if not key in self.users[self.currentID]: return default
+		return self.users[self.currentID][key]
+	
+	def hasToken(self,ID):
+		return bool(ID in self.users and self.users[ID].get('access_token'))
+
+	@property
+	def token(self):
+		return self.getSetting('access_token','')
+		
+	@property
+	def refreshToken(self):
+		return self.getSetting('refresh_token','')
+	
+	@property
+	def tokenExpiration(self):
+		return int(float(self.getSetting('token_expiration','0')))
+
+	@property
+	def userName(self):
+		return self.getSetting('name','')
+
 class GoogleOAuthorizer(object):
 	auth1URL = 'https://accounts.google.com/o/oauth2/device/code'
 	auth2URL = 'https://accounts.google.com/o/oauth2/token'
@@ -162,32 +233,51 @@ class GoogleOAuthorizer(object):
 		self.clientS = client_secret
 		self.authScope = auth_scope
 		self.authPollInterval = 5
-		self.authExpires = int(time.time())
 		self.deviceCode = ''
 		self.session = requests.Session()
-		self.loadToken()
+		self.tokenHandler = AddonTokens()
 
 	def _setSetting(self,key,value):
-		setSetting('{0}.{1}'.format(self.addonID,key),value)
+		self.tokenHandler.setSetting(key,value)
 
 	def _getSetting(self,key,default=None):
-		return getSetting('{0}.{1}'.format(self.addonID,key),default)
+		return self.tokenHandler.getSetting(key,default)
 
-	def loadToken(self):
-		self.token = self._getSetting('access_token')
-		self.tokenExpires = self._getSetting('token_expiration',0)
+	def setUser(self,userID):
+		self.tokenHandler.setUser(userID)
+	
+	def userName(self):
+		return self.tokenHandler.userName
+
+	def setUserName(self,name):
+		self._setSetting('name',name)
+
+	def renameUser(self,ID,new):
+		self.tokenHandler.renameUser(ID,new)
+		
+	def deleteUser(self,ID):
+		self.tokenHandler.deleteUser(ID)
+
+	def setUsers(self,users):
+		self.tokenHandler.setUsers(users)
+
+	def users(self):
+		ret = []
+		for k,v in self.tokenHandler.users.items():
+			ret.append((k,v['name']))
+		return ret
 
 	def getToken(self):
-		if self.tokenExpires <= int(time.time()):
+		if self.tokenHandler.tokenExpiration <= int(time.time()):
 			return self.updateToken()
-		return self.token
+		return self.tokenHandler.token
 
 	def updateToken(self):
 		LOG('REFRESHING TOKEN')
 		data = {	
 					'client_id':self.clientID,
 					'client_secret':self.clientS,
-					'refresh_token':self._getSetting('refresh_token'),
+					'refresh_token':self.tokenHandler.refreshToken,
 					'grant_type':'refresh_token'
 		}
 
@@ -196,10 +286,10 @@ class GoogleOAuthorizer(object):
 			self.saveData(json)
 		else:
 			LOG('Failed to update token')
-		return self.token
+		return self.tokenHandler.token
 	
 	def authorized(self):
-		return bool(self.token)
+		return bool(self.tokenHandler.token)
 		
 	def authorize(self):
 		userCode = self.getDeviceUserCode()
@@ -224,13 +314,9 @@ class GoogleOAuthorizer(object):
 		return self.saveData(json)
 		
 	def saveData(self,json):
-		self.token = json.get('access_token','')
-		refreshToken = json.get('refresh_token')
-		self.tokenExpires = json.get('expires_in',3600) + int(time.time())
-		self._setSetting('access_token',self.token)
-		if refreshToken: self._setSetting('refresh_token',refreshToken)
-		self._setSetting('token_expiration',self.tokenExpires)
-		return self.token and refreshToken
+		self._setSetting('access_token',json.get('access_token',''))
+		self._setSetting('refresh_token',json.get('refresh_token',''))
+		self._setSetting('token_expiration',json.get('expires_in',3600) + int(time.time()))
 
 	def pollAuthServer(self):
 		json = self.session.post(
@@ -257,9 +343,3 @@ class GoogleOAuthorizer(object):
 			LOG('ERROR - getDeviceUserCode(): ' + json.get('error_description',''))
 		return json.get('user_code','')
 
-
-def getSetting(key,default=None):
-	return xbmcaddon.Addon(ADDON_ID).getSetting(key) or default
-	
-def setSetting(key,value):
-	xbmcaddon.Addon(ADDON_ID).setSetting(key,value)
