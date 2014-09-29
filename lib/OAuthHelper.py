@@ -272,7 +272,18 @@ class GoogleOAuthorizer(object):
 			return self.updateToken()
 		return self.tokenHandler.token
 
+	def errorReAuthorize(self):
+		LOG('Re-authorizing due to error or missing refresh token...')
+		noAuth = xbmcgui.Dialog().yesno('Error','There was an error updating authorization','Re-authorize? (Recommended)',nolabel='Yes',yeslabel='No')
+		if noAuth: return None
+		self.authorize()
+		return self.tokenHandler.token
+
 	def updateToken(self):
+		if not self.tokenHandler.refreshToken:
+			LOG('Refresh token missing')
+			return self.errorReAuthorize()
+
 		LOG('REFRESHING TOKEN')
 		data = {	
 					'client_id':self.clientID,
@@ -286,6 +297,8 @@ class GoogleOAuthorizer(object):
 			self.saveData(json)
 		else:
 			LOG('Failed to update token')
+			return self.errorReAuthorize()
+
 		return self.tokenHandler.token
 	
 	def authorized(self):
@@ -314,8 +327,10 @@ class GoogleOAuthorizer(object):
 		return self.saveData(json)
 		
 	def saveData(self,json):
+		print json
 		self._setSetting('access_token',json.get('access_token',''))
-		self._setSetting('refresh_token',json.get('refresh_token',''))
+		refreshToken = json.get('refresh_token')
+		if refreshToken: self._setSetting('refresh_token',refreshToken)
 		self._setSetting('token_expiration',json.get('expires_in',3600) + int(time.time()))
 
 	def pollAuthServer(self):
