@@ -153,8 +153,8 @@ def timeLeft(start,total,secsLeft=None):
 	pct = int((sofar/float(total))*100)
 	mins = int(left/60)
 	secs = int(left%60)
-	mins = mins and '{0} {1} '.format(mins,T(32020)) or ''
-	secs = secs and '{0} {1}'.format(secs,T(32021)) or ''
+	mins = mins and ' {0} {1}'.format(mins,T(32020)) or ''
+	secs = secs and ' {0} {1}'.format(secs,T(32021)) or ''
 	if mins or secs: leftDisp = mins + secs + ' {0}'.format(T(32022))
 	return pct, leftDisp, start
 

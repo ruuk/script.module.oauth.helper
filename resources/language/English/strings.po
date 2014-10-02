@@ -89,14 +89,17 @@ msgctxt "#32019"
 msgid "Authorization complete!"
 msgstr ""
 
+#minutes
 msgctxt "#32020"
-msgid "minutes"
+msgid "m"
 msgstr ""
 
+#seconds
 msgctxt "#32021"
-msgid "seconds"
+msgid "s"
 msgstr ""
 
+#as in 5 minutes remaining
 msgctxt "#32022"
 msgid "remaining"
 msgstr ""
