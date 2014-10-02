@@ -9,6 +9,8 @@ import time, re, os, json
 
 ADDON_ID = 'script.module.oauth.helper'
 
+T = xbmcaddon.Addon(ADDON_ID).getLocalizedString
+
 TOKEN_PATH = os.path.join(xbmc.translatePath(xbmcaddon.Addon(ADDON_ID).getAddonInfo('profile')),'tokens')
 if not os.path.exists(TOKEN_PATH): os.makedirs(TOKEN_PATH)
 
@@ -43,7 +45,7 @@ def getToken(source,from_file=False):
 		token = showFailOptions()
 
 def showFailOptions():
-	idx = xbmcgui.Dialog().select('Options',['Retry','Load Token From File','Cancel'])
+	idx = xbmcgui.Dialog().select(T(32001),[T(32002),T(32003),T(32004)])
 	if idx < 0 or idx == 2:
 		return None
 		
@@ -53,14 +55,14 @@ def showFailOptions():
 		return True
 
 def loadTokenFromFile():	
-	fpath = xbmcgui.Dialog().browseSingle(1,'Browse to file containing token','files')
+	fpath = xbmcgui.Dialog().browseSingle(1,T(32005),'files')
 	if not fpath: return None
 	try:
 		import xbmcvfs
 		f = xbmcvfs.File(fpath)
 		token = f.read().strip()
 		if re.search('[\n\r\t]',token):
-			xbmcgui.Dialog().ok('ERROR','','Not a valid token file.')
+			xbmcgui.Dialog().ok(T(32006).upper(),'',T(32007))
 			return None
 	except:
 		import traceback
@@ -68,7 +70,7 @@ def loadTokenFromFile():
 		return None
 	finally:
 		f.close()
-	xbmcgui.Dialog().ok('Done','','Token Loaded!')
+	xbmcgui.Dialog().ok(T(32008),'',T(32009))
 	return token
 
 def _getToken(source):
@@ -81,8 +83,14 @@ def _getToken(source):
 	lookup_disp = lookup[0:4] + '-' + lookup[-4:]
 	md5 = data['md5']
 	prog = xbmcgui.DialogProgress()
-	prog.create('Authorize','Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response...')
-	prog.update(0,'Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response... ')
+	prog.create(
+		T(32010),
+		'{0} {1}'.format(T(32011),USER_URL),'{0} {1}'.format(T(32012),lookup_disp),T(32013)
+	)
+	prog.update(
+		0,
+		'{0} {1}'.format(T(32011),USER_URL),'{0} {1}'.format(T(32012),lookup_disp),T(32013)
+	)
 	secsLeft = 0
 	try:
 		while not prog.iscanceled() and not xbmc.abortRequested:
@@ -100,17 +108,17 @@ def _getToken(source):
 				xbmc.log(traceback.format_exc())
 			if status == 'error':
 				prog.close()
-				yesno = xbmcgui.Dialog().yesno('ERROR','There was an error authorizing.','','Please try again.','OK','Options')
+				yesno = xbmcgui.Dialog().yesno(T(32006).upper(),T(32014),'',T(32015),T(32016),T(32001))
 				return GetTokenFail('ERROR',yesno)
 			elif status == 'waiting':
 				secsLeft = data.get('secsLeft')
 			elif status == 'timeout':
 				prog.close()
-				yesno = xbmcgui.Dialog().ok('Timeout','Authorization timed out.','','Please try again.','OK','Options')
+				yesno = xbmcgui.Dialog().ok(T(32017),T(32018),'',T(32015),T(32016),T(32001))
 				return GetTokenFail('TIMEOUT',yesno)
 			elif status == 'ready':
 				prog.close()
-				xbmcgui.Dialog().ok('Done','','Authorization complete!')
+				xbmcgui.Dialog().ok(T(32008),'',T(32019))
 				return data.get('token')
 
 			for x in range(0,POLL_INTERVAL_SECONDS): #Update display every second, but only poll every POLL_INTERVAL_SECONDS
@@ -118,7 +126,10 @@ def _getToken(source):
 				pct, leftDisp, start = timeLeft(start,WAIT_SECONDS,secsLeft=secsLeft)
 				if pct == None: break
 				secsLeft = None
-				prog.update(pct,'Go to: {0}'.format(USER_URL),'and enter the code: {0}'.format(lookup_disp),'Waiting for response... ' + leftDisp)
+				prog.update(
+					pct,
+					'{0} {1}'.format(T(32011),USER_URL),'{0} {1}'.format(T(32012),lookup_disp),T(32013) + leftDisp
+				)
 				xbmc.sleep(1000)
 			
 	finally:
@@ -142,9 +153,9 @@ def timeLeft(start,total,secsLeft=None):
 	pct = int((sofar/float(total))*100)
 	mins = int(left/60)
 	secs = int(left%60)
-	mins = mins and '{0}m '.format(mins) or ''
-	secs = secs and '{0}s'.format(secs) or ''
-	if mins or secs: leftDisp = mins + secs + ' left'
+	mins = mins and '{0} {1} '.format(mins,T(32020)) or ''
+	secs = secs and '{0} {1}'.format(secs,T(32021)) or ''
+	if mins or secs: leftDisp = mins + secs + ' {0}'.format(T(32022))
 	return pct, leftDisp, start
 
 class AddonTokens(object):
@@ -274,7 +285,7 @@ class GoogleOAuthorizer(object):
 
 	def errorReAuthorize(self):
 		LOG('Re-authorizing due to error or missing refresh token...')
-		noAuth = xbmcgui.Dialog().yesno('Error','There was an error updating authorization','Re-authorize? (Recommended)',nolabel='Yes',yeslabel='No')
+		noAuth = xbmcgui.Dialog().yesno(T(32006),T(32023),T(32024),nolabel=T(32025),yeslabel=T(32026))
 		if noAuth: return None
 		self.authorize()
 		return self.tokenHandler.token
@@ -308,11 +319,11 @@ class GoogleOAuthorizer(object):
 		userCode = self.getDeviceUserCode()
 		if not userCode: return
 		d = xbmcgui.DialogProgress()
-		d.create('Authorization','Go to: ' + self.verificationURL,'Enter code: ' + userCode,'Waiting for response...')
+		d.create(T(32010),'{0} {1}'.format(T(32011),self.verificationURL),'{0} {1}'.format(T(32012),userCode),T(32013))
 		try:
 			ct=0
 			while not d.iscanceled() and not xbmc.abortRequested:
-				d.update(ct,'Go to: ' + self.verificationURL,'Enter code: ' + userCode,'Waiting for response...')
+				d.update(ct,'{0} {1}'.format(T(32011),self.verificationURL),'{0} {1}'.format(T(32012),userCode),T(32013))
 				json = self.pollAuthServer()
 				if 'access_token' in json: break
 				for x in range(0,self.authPollInterval):
@@ -323,11 +334,10 @@ class GoogleOAuthorizer(object):
 		finally:
 			d.close()
 			
-		xbmcgui.Dialog().ok('Done','','Authorization complete!')
+		xbmcgui.Dialog().ok(T(32008),'',T(32019))
 		return self.saveData(json)
 		
 	def saveData(self,json):
-		print json
 		self._setSetting('access_token',json.get('access_token',''))
 		refreshToken = json.get('refresh_token')
 		if refreshToken: self._setSetting('refresh_token',refreshToken)
