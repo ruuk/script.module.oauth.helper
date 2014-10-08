@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-try:
-	import requests2 as requests
-except ImportError:
-	import requests
+import requests
 	
 import xbmc, xbmcgui, xbmcaddon
 import time, re, os, json
